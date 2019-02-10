@@ -1,0 +1,214 @@
+version: '3'
+networks:
+  backend:
+  mysql:
+  mongodb:
+  nginx-proxy:
+    external:
+      name: nginx_proxy
+
+services:
+  id:
+    image: 127.0.0.1:5000/futagoship_id
+    restart: always
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        - "traefik.port=80"
+        - "traefik.backend=id"
+        - "traefik.frontend.rule=Host:id.goship.asia"
+        - "traefik.docker.network=nginx_proxy"
+    build: ./services/id
+    volumes:
+      - ./services/id/:/var/www/html
+      - ./conf.d/apache/id.conf:/etc/apache2/sites-available/000-default.conf
+    depends_on:
+      - id_mariadb
+    networks:
+      - backend
+      - mysql
+      - nginx-proxy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+
+  id_mariadb:
+    image: 127.0.0.1:5000/futagoship_id_mariadb
+    restart: always
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        - "traefik.port=33061"
+        - "traefik.backend=id_mariadb"
+    build: ./mariadb
+    volumes:
+      - ./mariadb/data/id:/var/lib/mysql
+    ports:
+      - 33061:3306
+    environment:
+      - MYSQL_DATABASE=id
+      - MYSQL_USER=id
+      - MYSQL_PASSWORD=9Z7L?JXGf4YeaWXT#NoyUV@BXEiA)fdH
+      - MYSQL_ROOT_PASSWORD=9Z7L?JXGf4YeaWXT#NoyUV@BXEiA)fdH
+    networks:
+      - mysql
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+
+  authorized:
+    image: 127.0.0.1:5000/futagoship_authorized
+    restart: always
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        - "traefik.port=80"
+        - "traefik.backend=authorized"
+        - "traefik.frontend.rule=Host:authorized.goship.asia"
+        - "traefik.docker.network=nginx_proxy"
+    build: ./services/authorized
+    volumes:
+      - ./services/authorized/:/usr/src/app
+      - ./conf.d/nginx/authorized.conf:/etc/nginx/conf.d/default.conf
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+    networks:
+      - nginx-proxy
+
+  gateway:
+    image: 127.0.0.1:5000/futagoship_gateway
+    restart: always
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        - "traefik.port=80"
+        - "traefik.backend=gateway"
+        - "traefik.frontend.rule=Host:gateway.goship.asia"
+        - "traefik.docker.network=nginx_proxy"
+    build: ./services/gateway
+    volumes:
+      - ./services/gateway/:/usr/src/app
+    depends_on:
+      - gateway_mongodb
+    networks:
+      - backend
+      - mongodb
+      - nginx-proxy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+
+  gateway_mongodb:
+    image: mongo
+    restart: always
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        - "traefik.port=27018"
+        - "traefik.backend=gateway_mongodb"
+    command: --smallfiles
+    volumes:
+      - mongodb_gateway:/data/db
+    ports:
+      - 27018:27017
+    networks:
+      - mongodb
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+
+  location:
+    image: 127.0.0.1:5000/futagoship_location
+    restart: always
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        - "traefik.port=80"
+        - "traefik.backend=location"
+        - "traefik.frontend.rule=Host:location-api.goship.asia"
+        - "traefik.docker.network=nginx_proxy"
+    build: ./services/location
+    volumes:
+      - ./services/location/:/var/www/html
+      - ./conf.d/apache/location.conf:/etc/apache2/sites-available/000-default.conf
+    depends_on:
+      - location_mariadb
+    networks:
+      - backend
+      - mysql
+      - nginx-proxy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+
+  location_mariadb:
+    image: 127.0.0.1:5000/futagoship_location_mariadb
+    restart: always
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        - "traefik.port=33062"
+        - "traefik.backend=location_mariadb"
+    build: ./mariadb
+    volumes:
+      - ./mariadb/data/location:/var/lib/mysql
+    ports:
+      - "33062:3306"
+    environment:
+      - MYSQL_DATABASE=location
+      - MYSQL_USER=location
+      - MYSQL_PASSWORD=DPk7UgtTBNVEptr4YKidcqhC)/v6s^*q
+      - MYSQL_ROOT_PASSWORD=DPk7UgtTBNVEptr4YKidcqhC)/v6s^*q
+    networks:
+      - mysql
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+
+  location_fe:
+    image: 127.0.0.1:5000/futagoship_location_fe
+    restart: always
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        - "traefik.port=80"
+        - "traefik.backend=location_fe"
+        - "traefik.frontend.rule=Host:location.goship.asia"
+        - "traefik.docker.network=nginx_proxy"
+    build: ./services/location_fe
+    volumes:
+      - ./services/location_fe/:/usr/src/app
+      - ./conf.d/nginx/location_fe.conf:/etc/nginx/conf.d/default.conf
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+    networks:
+      - nginx-proxy
+
+volumes:
+  mongodb_gateway:

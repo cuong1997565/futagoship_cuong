@@ -1,0 +1,332 @@
+version: '3'
+networks:
+  backend:
+    driver: bridge
+  reverse-proxy:
+    driver: bridge
+  mysql:
+    driver: bridge
+  # mongodb:
+  #   driver: bridge
+  # elasticsearch:
+  #   driver: bridge
+  # rabbitmq:
+  #   driver: bridge
+  postgres:
+    driver: bridge
+
+services:
+  nginx-proxy:
+    image: jwilder/nginx-proxy
+    ports:
+      - 80:80
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    networks:
+      - reverse-proxy
+
+  # elasticsearch:
+  #   image: docker.elastic.co/elasticsearch/elasticsearch:6.4.2
+  #   environment:
+  #     - cluster.name=docker-cluster
+  #     - bootstrap.memory_lock=true
+  #     - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+  #     - VIRTUAL_HOST=$DOMAIN_ELASTIC
+  #     - VIRTUAL_PORT=9200
+  #   ulimits:
+  #     memlock:
+  #       soft: -1
+  #       hard: -1
+  #   volumes:
+  #     - ./elasticsearch/data:/usr/share/elasticsearch/data
+  #   ports:
+  #     - 9200:9200
+  #   networks:
+  #     - reverse-proxy
+  #     - elasticsearch
+
+  # kibana:
+  #   image: docker.elastic.co/kibana/kibana:6.4.2
+  #   environment:
+  #     - SERVER_NAME=kibana.futagoship
+  #     - ELASTICSEARCH_URL=http://elasticsearch:9200
+  #     - VIRTUAL_HOST=$DOMAIN_KIBANA
+  #     - VIRTUAL_PORT=5601
+  #     - XPACK_MONITORING_ENABLED=true
+  #   ports:
+  #     - 5601:5601
+  #   networks:
+  #     - reverse-proxy
+  #     - elasticsearch
+
+  # rabbitmq:
+  #   image: rabbitmq:3-management
+  #   ports:
+  #    - 15672:15672
+  #    - 5672:5672
+  #   networks:
+  #    - rabbitmq
+  #   volumes:
+  #    - ./rabbitmq/rabbitmq-node-1:/var/lib/rabbitmq
+  #   environment:
+  #    - RABBITMQ_ERLANG_COOKIE=rabbitmq_cookie
+  #    - RABBITMQ_DEFAULT_USER=root
+  #    - RABBITMQ_DEFAULT_PASS=root
+  #    - VIRTUAL_HOST=$DOMAIN_RABBITMQ
+  #    - VIRTUAL_PORT=15672
+
+  # id:
+  #   build: ./services/id
+  #   volumes:
+  #     - ./services/id/:/var/www/html
+  #     - ./conf.d/apache/id.conf:/etc/apache2/sites-available/000-default.conf
+  #   depends_on:
+  #     - id_mariadb
+  #   networks:
+  #     - backend
+  #     - mysql
+  #     - reverse-proxy
+  #     # - rabbitmq
+  #   environment:
+  #     - VIRTUAL_HOST=$DOMAIN_ID
+
+  # id_mariadb:
+  #   build: ./mariadb
+  #   volumes:
+  #     - ./mariadb/data/id:/var/lib/mysql
+  #   ports:
+  #     - 33061:3306
+  #   environment:
+  #     - MYSQL_DATABASE=id
+  #     - MYSQL_USER=id
+  #     - MYSQL_PASSWORD=id
+  #     - MYSQL_ROOT_PASSWORD=root
+  #   networks:
+  #     - mysql
+
+  # gateway:
+  #   build: ./services/gateway
+  #   volumes:
+  #     - ./services/gateway/:/usr/src/app
+  #   depends_on:
+  #     - gateway_mongodb
+  #   networks:
+  #     - backend
+  #     - mongodb
+  #     - reverse-proxy
+  #   environment:
+  #     - VIRTUAL_HOST=$DOMAIN_GATEWAY
+
+  # gateway_mongodb:
+  #   image: mongo
+  #   command: --smallfiles
+  #   volumes:
+  #     - mongodb_gateway:/data/db
+  #   ports:
+  #     - 27018:27017
+  #   networks:
+  #     - mongodb
+
+  # location:
+  #   build: ./services/location
+  #   volumes:
+  #     - ./services/location/:/var/www/html
+  #     - ./conf.d/apache/location.conf:/etc/apache2/sites-available/000-default.conf
+  #   depends_on:
+  #     - location_mariadb
+  #   networks:
+  #     - backend
+  #     - reverse-proxy
+  #     - mysql
+  #     - rabbitmq
+  #   environment:
+  #     - VIRTUAL_HOST=$DOMAIN_LOCATION_API
+
+  # location_mariadb:
+  #   build: ./mariadb
+  #   volumes:
+  #     - ./mariadb/data/location:/var/lib/mysql
+  #   ports:
+  #     - "33062:3306"
+  #   environment:
+  #     - MYSQL_DATABASE=location
+  #     - MYSQL_USER=location
+  #     - MYSQL_PASSWORD=location
+  #     - MYSQL_ROOT_PASSWORD=root
+  #   networks:
+  #     - mysql
+
+  # location_fe:
+  #   build: ./services/location_fe
+  #   volumes:
+  #     - ./services/location_fe/:/usr/src/app
+  #     - ./conf.d/nginx/location_fe.conf:/etc/nginx/conf.d/default.conf
+  #   networks:
+  #     - reverse-proxy
+  #   environment:
+  #     - VIRTUAL_HOST=$DOMAIN_LOCATION_FE
+
+  # authorized:
+  #   build: ./services/authorized
+  #   volumes:
+  #     - ./services/authorized/:/usr/src/app
+  #     - ./conf.d/nginx/authorized.conf:/etc/nginx/conf.d/default.conf
+  #   networks:
+  #     - reverse-proxy
+  #   environment:
+  #     - VIRTUAL_HOST=$DOMAIN_AUTHORIZED_FE
+  erp:
+    build: ./services/erp
+    depends_on:
+      - erp_db
+    volumes:
+      - erp_data:/var/lib/odoo
+      - ./services/erp/config:/etc/odoo
+      - ./services/erp/addons:/mnt/extra-addons
+    environment:
+      - HOST=erp_db
+      - USER=odoo
+      - PASSWORD=myodoo
+      - VIRTUAL_HOST=$DOMAIN_ERP
+      - VIRTUAL_PORT=8069
+    networks:
+      - reverse-proxy
+      - postgres
+
+  erp_db:
+    image: postgres:10
+    environment:
+      - POSTGRES_USER=odoo
+      - POSTGRES_PASSWORD=myodoo
+      - POSTGRES_DB=postgres
+    ports:
+      - 54320:5432
+    volumes:
+      - postgres_erp:/var/lib/postgresql/data
+    networks:
+      - postgres
+
+  landing:
+    image: wordpress
+    volumes:
+      - ./services/landing/wp-content:/var/www/html/wp-content
+    depends_on:
+      - landing_mariadb
+    networks:
+      - backend
+      - mysql
+      - reverse-proxy
+    environment:
+      - WORDPRESS_DB_HOST=landing_mariadb
+      - WORDPRESS_DB_USER=landing
+      - WORDPRESS_DB_PASSWORD=landing
+      - WORDPRESS_DB_NAME=landing
+      - VIRTUAL_HOST=$DOMAIN_LANDING
+
+  landing_mariadb:
+    build: ./mariadb
+    volumes:
+      - ./mariadb/data/landing:/var/lib/mysql
+    ports:
+      - 33065:3306
+    environment:
+      - MYSQL_DATABASE=landing
+      - MYSQL_USER=landing
+      - MYSQL_PASSWORD=landing
+      - MYSQL_ROOT_PASSWORD=root
+    networks:
+      - mysql
+
+  wordpress:
+    image: wordpress
+    volumes:
+      - ./services/wordpress/wp-content:/var/www/html/wp-content
+    depends_on:
+      - wordpress_mariadb
+    networks:
+      - backend
+      - mysql
+      - reverse-proxy
+    environment:
+      - WORDPRESS_DB_HOST=wordpress_mariadb
+      - WORDPRESS_DB_USER=wordpress
+      - WORDPRESS_DB_PASSWORD=wordpress
+      - WORDPRESS_DB_NAME=wordpress
+      - VIRTUAL_HOST=$DOMAIN_WORDPRESS
+
+  wordpress_mariadb:
+    build: ./mariadb
+    volumes:
+      - ./mariadb/data/wordpress:/var/lib/mysql
+    ports:
+      - 33066:3306
+    environment:
+      - MYSQL_DATABASE=wordpress
+      - MYSQL_USER=wordpress
+      - MYSQL_PASSWORD=wordpress
+      - MYSQL_ROOT_PASSWORD=root
+    networks:
+      - mysql
+
+
+  # uploader:
+  #   build: ./services/uploader
+  #   volumes:
+  #     - ./services/uploader/:/var/www/html
+  #     - ./conf.d/apache/uploader.conf:/etc/apache2/sites-available/000-default.conf
+  #   networks:
+  #     - backend
+  #     - reverse-proxy
+  #     - mysql
+  #   environment:
+  #     - VIRTUAL_HOST=$DOMAIN_UPLOADER_API
+
+  # uploader_mariadb:
+  #   build: ./mariadb
+  #   volumes:
+  #     - ./mariadb/data/uploader:/var/lib/mysql
+  #   ports:
+  #     - "33063:3306"
+  #   environment:
+  #     - MYSQL_DATABASE=uploader
+  #     - MYSQL_USER=uploader
+  #     - MYSQL_PASSWORD=uploader
+  #     - MYSQL_ROOT_PASSWORD=root
+  #   networks:
+  #     - mysql
+
+  # hrm:
+  #   build: ./services/hrm
+  #   volumes:
+  #     - ./services/hrm/:/var/www/html
+  #     - ./conf.d/apache/hrm.conf:/etc/apache2/sites-available/000-default.conf
+  #   depends_on:
+  #     - hrm_mariadb
+  #   networks:
+  #     - backend
+  #     - reverse-proxy
+  #     - mysql
+  #   environment:
+  #     - VIRTUAL_HOST=$DOMAIN_HRM_API
+
+  # hrm_mariadb:
+  #   build: ./mariadb
+  #   volumes:
+  #     - ./mariadb/data/hrm:/var/lib/mysql
+  #   ports:
+  #     - "33064:3306"
+  #   environment:
+  #     - MYSQL_DATABASE=hrm
+  #     - MYSQL_USER=hrm
+  #     - MYSQL_PASSWORD=hrm
+  #     - MYSQL_ROOT_PASSWORD=root
+  #   networks:
+  #     - mysql
+
+volumes:
+  # mongodb_gateway:
+  #   driver: local
+  postgres_erp:
+    driver: local
+  erp_data:
+    driver: local
